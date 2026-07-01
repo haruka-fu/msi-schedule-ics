@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-MSI (Mid-Season Invitational) の試合スケジュールを
-lolesports公式の非公開APIから取得し、ICSファイルを生成するスクリプト。
+League of Legends の国際大会(MSI, Worlds, First Stand)の試合スケジュールを
+lolesports公式の非公開APIから取得し、まとめて1つのICSファイルを生成するスクリプト。
 
 使い方:
     pip install -r requirements.txt
     python msi_to_ics.py
 
-生成された msi_schedule.ics は、GitHub Actions で定期実行して
+生成された all_leagues_schedule.ics は、GitHub Actions で定期実行して
 リポジトリにコミットすることで自動更新されます。Google カレンダー側は
 その raw ファイルの URL を「他のカレンダー > URLで追加」で購読してください。
 """
@@ -22,19 +22,29 @@ API_KEY = os.environ.get("LOLESPORTS_API_KEY", "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1T
 BASE = "https://esports-api.lolesports.com/persisted/gw"
 HEADERS = {"x-api-key": API_KEY}
 
-# 対象リーグ名に含まれるキーワード(大文字小文字無視)
-LEAGUE_NAME_HINT = "MSI"
+OUTPUT_FILE = "all_leagues_schedule.ics"
+
+# 対象大会のslug(getLeaguesで取得できる一意な識別子)
+TARGET_LEAGUE_SLUGS = ["msi", "worlds", "first_stand"]
 
 
-def get_league_id():
-    """全リーグ一覧から MSI のリーグIDを探す"""
+def get_leagues():
+    """全リーグ一覧から対象大会のリーグID/名前を集める"""
     r = requests.get(f"{BASE}/getLeagues", headers=HEADERS, params={"hl": "ja-JP"})
     r.raise_for_status()
     leagues = r.json()["data"]["leagues"]
+
+    found = []
+    found_slugs = set()
     for lg in leagues:
-        if LEAGUE_NAME_HINT.lower() in lg["name"].lower() or lg["slug"] == "msi":
-            return lg["id"], lg["name"]
-    raise RuntimeError("MSIリーグが見つかりませんでした。getLeaguesの結果を確認してください。")
+        if lg["slug"] in TARGET_LEAGUE_SLUGS:
+            found.append((lg["id"], lg["name"]))
+            found_slugs.add(lg["slug"])
+
+    missing = set(TARGET_LEAGUE_SLUGS) - found_slugs
+    if missing:
+        raise RuntimeError(f"次の大会が見つかりませんでした: {missing}")
+    return found
 
 
 def get_all_schedule_events(league_id):
@@ -91,13 +101,8 @@ def estimate_duration_minutes(best_of):
     return {1: 60, 3: 120, 5: 180}.get(best_of, 120)
 
 
-def build_ics(events, league_name):
-    lines = [
-        "BEGIN:VCALENDAR",
-        "VERSION:2.0",
-        "PRODID:-//self-made//lolesports-msi-ics//JA",
-        f"X-WR-CALNAME:{league_name} Schedule",
-    ]
+def build_vevents(events, league_name):
+    lines = []
 
     for ev in events:
         match = ev.get("match")
@@ -112,7 +117,9 @@ def build_ics(events, league_name):
         teams = match.get("teams", [])
         # 略称(code)を優先。無ければ正式名、それも無ければTBD
         team_names = [t.get("code") or t.get("name") or "TBD" for t in teams]
-        summary = " vs ".join(team_names) if team_names else "MSI Match"
+        summary = f"[{league_name}] " + (
+            " vs ".join(team_names) if team_names else "Match"
+        )
 
         strategy = match.get("strategy", {})
         best_of = strategy.get("count", 3)
@@ -126,7 +133,7 @@ def build_ics(events, league_name):
             f"{' vs '.join(full_names)}"
         )
 
-        uid = f"{match.get('id', uuid.uuid4())}@msi-ics"
+        uid = f"{match.get('id', uuid.uuid4())}@lolesports-ics"
 
         lines += [
             "BEGIN:VEVENT",
@@ -139,21 +146,31 @@ def build_ics(events, league_name):
             "END:VEVENT",
         ]
 
-    lines.append("END:VCALENDAR")
-    return "\r\n".join(lines)
+    return lines
 
 
 def main():
-    league_id, league_name = get_league_id()
-    print(f"League found: {league_name} (id={league_id})")
+    leagues = get_leagues()
 
-    events = get_all_schedule_events(league_id)
-    print(f"{len(events)} 件のイベントを取得しました")
+    all_vevents = []
+    for league_id, league_name in leagues:
+        print(f"League found: {league_name} (id={league_id})")
+        events = get_all_schedule_events(league_id)
+        print(f"  {len(events)} 件のイベントを取得しました")
+        all_vevents += build_vevents(events, league_name)
 
-    ics_text = build_ics(events, league_name)
-    with open("msi_schedule.ics", "w", encoding="utf-8") as f:
-        f.write(ics_text)
-    print("msi_schedule.ics を生成しました")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//self-made//lolesports-ics//JA",
+        "X-WR-CALNAME:LoL International Events Schedule",
+    ]
+    lines += all_vevents
+    lines.append("END:VCALENDAR")
+
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write("\r\n".join(lines))
+    print(f"{OUTPUT_FILE} を生成しました")
 
 
 if __name__ == "__main__":
