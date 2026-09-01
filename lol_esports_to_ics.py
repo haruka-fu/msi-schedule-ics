@@ -4,8 +4,9 @@ League of Legends の試合スケジュールを lolesports公式の非公開API
 まとめて1つのICSファイルを生成するスクリプト。
 
 対象大会は TARGET_LEAGUE_SLUGS で指定する(現状: MSI, Worlds, First Stand, LCK)。
-リーグ単位でチーム/ステージを絞り込みたい場合は LEAGUE_FILTERS に追加する。
-例: LCKはT1のRegional Qualifier(リージョナルチャンピオンシップ)のみを対象。
+リーグ単位でチーム/ステージ/期間を絞り込みたい場合は LEAGUE_FILTERS に追加する。
+例: LCKはT1のRegional Championship(リージョナルチャンピオンシップ)のみを対象。
+blockNameは年によって表記が変わるため、シーズン切り替え時は要更新。詳細はREADME参照。
 
 使い方:
     pip install -r requirements.txt
@@ -34,9 +35,23 @@ TARGET_LEAGUE_SLUGS = ["msi", "worlds", "first_stand", "lck"]
 # リーグごとに絞り込みたい場合はここに追加する。
 # teams: チームcode基準(未指定なら全チーム対象)
 # block_names: getScheduleのblockName基準(未指定なら全ステージ対象)
-# LCKはT1のRegional Qualifier(リージョナルチャンピオンシップ、Worlds出場権予選)のみを対象にする。
+# start_date: この日付(ISO8601, 例 "2026-08-24")以降の試合のみ対象(未指定なら全期間)
+#
+# 注意: blockNameは年によって表記が変わり、かつ同じ大会内の別ステージ
+# (例: 通常のSplit Playoffs)と同じ文字列が使われることがあるため、
+# block_namesだけでは狙った試合に絞り込めない場合がある。
+# LCKはT1のRegional Championship(Worlds出場権をかけた最終ステージ)のみを
+# 対象にしたいが、2026年時点ではこのステージのblockNameが単に「プレイオフ」
+# 「Finals」になっており、Split1のプレイオフ等とも重複するため、
+# start_dateで該当シーズンの開始日を指定して絞り込んでいる。
+# 毎年シーズンが切り替わったら、下記のblock_names/start_dateを
+# lolesports公式サイトやgetStandings APIで確認して更新すること。
 LEAGUE_FILTERS = {
-    "lck": {"teams": ["T1"], "block_names": ["Regional Qualifier"]},
+    "lck": {
+        "teams": ["T1"],
+        "block_names": ["プレイオフ", "Finals"],
+        "start_date": "2026-08-24",
+    },
 }
 
 
@@ -113,8 +128,8 @@ def estimate_duration_minutes(best_of):
     return {1: 60, 3: 120, 5: 180}.get(best_of, 120)
 
 
-def filter_events(events, team_codes=None, block_names=None):
-    """team_codes/block_namesで指定した条件に合致する試合のみを残す"""
+def filter_events(events, team_codes=None, block_names=None, start_date=None):
+    """team_codes/block_names/start_dateで指定した条件に合致する試合のみを残す"""
     filtered = []
     for ev in events:
         match = ev.get("match")
@@ -125,6 +140,8 @@ def filter_events(events, team_codes=None, block_names=None):
             if not any(t.get("code") in team_codes for t in teams):
                 continue
         if block_names and ev.get("blockName") not in block_names:
+            continue
+        if start_date and ev.get("startTime", "") < start_date:
             continue
         filtered.append(ev)
     return filtered
@@ -193,6 +210,7 @@ def main():
                 events,
                 team_codes=league_filter.get("teams"),
                 block_names=league_filter.get("block_names"),
+                start_date=league_filter.get("start_date"),
             )
             print(f"  -> 絞り込み条件 {league_filter} 適用後: {len(events)} 件")
 
