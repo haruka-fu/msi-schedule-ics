@@ -225,7 +225,7 @@ def main():
     lines += all_vevents
     lines.append("END:VCALENDAR")
 
-    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+    with open(OUTPUT_FILE, "w", encoding="utf-8", newline="") as f:
         f.write("\r\n".join(lines))
     print(f"{OUTPUT_FILE} を生成しました")
 
