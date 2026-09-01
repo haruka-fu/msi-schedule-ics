@@ -184,7 +184,7 @@ def build_vevents(events, league_name):
         lines += [
             "BEGIN:VEVENT",
             f"UID:{uid}",
-            f"DTSTAMP:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTSTAMP:{start_dt.strftime('%Y%m%dT%H%M%SZ')}",
             f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}",
             f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}",
             f"SUMMARY:{summary}",
