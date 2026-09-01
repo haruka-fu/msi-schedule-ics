@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-League of Legends の国際大会(MSI, Worlds, First Stand)の試合スケジュールを
-lolesports公式の非公開APIから取得し、まとめて1つのICSファイルを生成するスクリプト。
+League of Legends の試合スケジュールを lolesports公式の非公開APIから取得し、
+まとめて1つのICSファイルを生成するスクリプト。
+
+対象大会は TARGET_LEAGUE_SLUGS で指定する(現状: MSI, Worlds, First Stand, LCK)。
+リーグ単位でチーム/ステージを絞り込みたい場合は LEAGUE_FILTERS に追加する。
+例: LCKはT1のRegional Qualifier(リージョナルチャンピオンシップ)のみを対象。
 
 使い方:
     pip install -r requirements.txt
-    python msi_to_ics.py
+    python lol_esports_to_ics.py
 
 生成された all_leagues_schedule.ics は、GitHub Actions で定期実行して
 リポジトリにコミットすることで自動更新されます。Google カレンダー側は
@@ -25,7 +29,15 @@ HEADERS = {"x-api-key": API_KEY}
 OUTPUT_FILE = "all_leagues_schedule.ics"
 
 # 対象大会のslug(getLeaguesで取得できる一意な識別子)
-TARGET_LEAGUE_SLUGS = ["msi", "worlds", "first_stand"]
+TARGET_LEAGUE_SLUGS = ["msi", "worlds", "first_stand", "lck"]
+
+# リーグごとに絞り込みたい場合はここに追加する。
+# teams: チームcode基準(未指定なら全チーム対象)
+# block_names: getScheduleのblockName基準(未指定なら全ステージ対象)
+# LCKはT1のRegional Qualifier(リージョナルチャンピオンシップ、Worlds出場権予選)のみを対象にする。
+LEAGUE_FILTERS = {
+    "lck": {"teams": ["T1"], "block_names": ["Regional Qualifier"]},
+}
 
 
 def get_leagues():
@@ -38,7 +50,7 @@ def get_leagues():
     found_slugs = set()
     for lg in leagues:
         if lg["slug"] in TARGET_LEAGUE_SLUGS:
-            found.append((lg["id"], lg["name"]))
+            found.append((lg["id"], lg["name"], lg["slug"]))
             found_slugs.add(lg["slug"])
 
     missing = set(TARGET_LEAGUE_SLUGS) - found_slugs
@@ -101,6 +113,23 @@ def estimate_duration_minutes(best_of):
     return {1: 60, 3: 120, 5: 180}.get(best_of, 120)
 
 
+def filter_events(events, team_codes=None, block_names=None):
+    """team_codes/block_namesで指定した条件に合致する試合のみを残す"""
+    filtered = []
+    for ev in events:
+        match = ev.get("match")
+        if not match:
+            continue
+        if team_codes:
+            teams = match.get("teams", [])
+            if not any(t.get("code") in team_codes for t in teams):
+                continue
+        if block_names and ev.get("blockName") not in block_names:
+            continue
+        filtered.append(ev)
+    return filtered
+
+
 def build_vevents(events, league_name):
     lines = []
 
@@ -153,10 +182,20 @@ def main():
     leagues = get_leagues()
 
     all_vevents = []
-    for league_id, league_name in leagues:
+    for league_id, league_name, slug in leagues:
         print(f"League found: {league_name} (id={league_id})")
         events = get_all_schedule_events(league_id)
         print(f"  {len(events)} 件のイベントを取得しました")
+
+        league_filter = LEAGUE_FILTERS.get(slug)
+        if league_filter:
+            events = filter_events(
+                events,
+                team_codes=league_filter.get("teams"),
+                block_names=league_filter.get("block_names"),
+            )
+            print(f"  -> 絞り込み条件 {league_filter} 適用後: {len(events)} 件")
+
         all_vevents += build_vevents(events, league_name)
 
     lines = [
