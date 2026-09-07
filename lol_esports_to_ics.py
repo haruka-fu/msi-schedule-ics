@@ -19,6 +19,8 @@ blockNameは年によって表記が変わるため、シーズン切り替え�
 
 import os
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from datetime import datetime, timedelta, timezone
 import uuid
 
@@ -26,6 +28,17 @@ import uuid
 API_KEY = os.environ.get("LOLESPORTS_API_KEY", "0TvQnueqKa5mxJntVWt0w4LpLfEkrV1Ta8rQBb9Z")
 BASE = "https://esports-api.lolesports.com/persisted/gw"
 HEADERS = {"x-api-key": API_KEY}
+
+# lolesports APIはたまにコネクションリセット等の一時的なエラーを返すため、
+# GitHub Actionsでの定期実行がそれだけで失敗しないようリトライさせる。
+_session = requests.Session()
+_retry = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["GET"],
+)
+_session.mount("https://", HTTPAdapter(max_retries=_retry))
 
 OUTPUT_FILE = "all_leagues_schedule.ics"
 
@@ -57,7 +70,7 @@ LEAGUE_FILTERS = {
 
 def get_leagues():
     """全リーグ一覧から対象大会のリーグID/名前を集める"""
-    r = requests.get(f"{BASE}/getLeagues", headers=HEADERS, params={"hl": "ja-JP"})
+    r = _session.get(f"{BASE}/getLeagues", headers=HEADERS, params={"hl": "ja-JP"})
     r.raise_for_status()
     leagues = r.json()["data"]["leagues"]
 
@@ -83,7 +96,7 @@ def get_all_schedule_events(league_id):
         params = {"hl": "ja-JP", "leagueId": league_id}
         if page_token:
             params["pageToken"] = page_token
-        r = requests.get(f"{BASE}/getSchedule", headers=HEADERS, params=params)
+        r = _session.get(f"{BASE}/getSchedule", headers=HEADERS, params=params)
         r.raise_for_status()
         return r.json()["data"]["schedule"]
 
