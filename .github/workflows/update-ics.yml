@@ -26,10 +26,13 @@ jobs:
           LOLESPORTS_API_KEY: ${{ secrets.LOLESPORTS_API_KEY }}
         run: python lol_esports_to_ics.py
 
+      - name: Generate LTK ICS
+        run: python ltk_schedule_to_ics.py
+
       - name: Commit and push if changed
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add all_leagues_schedule.ics
-          git diff --staged --quiet || git commit -m "chore: update all_leagues_schedule.ics"
+          git add all_leagues_schedule.ics ltk_schedule.ics
+          git diff --staged --quiet || git commit -m "chore: update schedule ICS files"
           git push

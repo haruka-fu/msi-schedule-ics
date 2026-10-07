@@ -1,7 +1,11 @@
 # msi-schedule-ics
 
-League of Legends の試合スケジュールを lolesports 公式の非公開APIから取得し、
-1つのICSファイル(`all_leagues_schedule.ics`)にまとめて生成するスクリプト。
+League of Legends の試合スケジュールをICSファイルにまとめて生成するスクリプト群。
+
+- `all_leagues_schedule.ics`: lolesports 公式の非公開APIから取得した大会(MSI/Worlds/First Stand/LCKなど)
+- `ltk_schedule.ics`: LTK (League The K4sen) Season Finale のスケジュール(公式APIが無いため手動データ)
+
+それぞれ別カレンダーとしてGoogleカレンダーに購読することで、色分けして表示できる。
 
 ## 対象大会
 
@@ -61,8 +65,19 @@ Worlds出場権をかけた最終ステージは、2024〜2025年は `Regional Q
 
 ```bash
 pip install -r requirements.txt
-python lol_esports_to_ics.py
+python lol_esports_to_ics.py      # all_leagues_schedule.ics を生成
+python ltk_schedule_to_ics.py     # ltk_schedule.ics を生成
 ```
 
-生成された `all_leagues_schedule.ics` は GitHub Actions で定期実行してリポジトリにコミットすることで自動更新される。
-Google カレンダー側は、その raw ファイルの URL を「他のカレンダーを追加 > URLで追加」で購読する。
+生成されたICSファイルは GitHub Actions で定期実行してリポジトリにコミットすることで自動更新される。
+Google カレンダー側は、各raw ファイルのURLを「他のカレンダーを追加 > URLで追加」でそれぞれ購読する
+(ファイルを分けて購読することで、Googleカレンダー上でカレンダーごとに別の色を設定できる)。
+
+## LTK (League The K4sen) スケジュールの更新
+
+`ltk_schedule_to_ics.py` は lolesports APIを使わず、公式サイトや配信で発表された
+スケジュール画像をもとに `REGULAR_STAGE` / `MASTERS_CUP` / `PLAYOFF_DAYS` に
+直接記述している。日程が追加・変更されたらこのファイルを直接編集すること。
+
+試合開始時刻は未発表のため、現状はすべて終日イベントとして登録している。
+時刻が判明した場合は `build_allday_vevent` を `DTSTART`/`DTEND`(日時指定)に変更する。
