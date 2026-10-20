@@ -70,8 +70,6 @@ python ltk_schedule_to_ics.py     # ltk_schedule.ics を生成
 ```
 
 生成されたICSファイルは GitHub Actions で定期実行してリポジトリにコミットすることで自動更新される。
-Google カレンダー側は、各raw ファイルのURLを「他のカレンダーを追加 > URLで追加」でそれぞれ購読する
-(ファイルを分けて購読することで、Googleカレンダー上でカレンダーごとに別の色を設定できる)。
 
 ## LTK (League The K4sen) スケジュールの更新
 
@@ -81,3 +79,41 @@ Google カレンダー側は、各raw ファイルのURLを「他のカレンダ
 
 試合開始時刻は未発表のため、現状はすべて終日イベントとして登録している。
 時刻が判明した場合は `build_allday_vevent` を `DTSTART`/`DTEND`(日時指定)に変更する。
+
+`ltk_schedule.ics` は Googleカレンダー連携の対象外のため、従来通り
+「他のカレンダーを追加 > URLで追加」でraw ファイルのURLを購読する。
+
+## Googleカレンダーへの反映方法
+
+Googleカレンダーの「他のカレンダーを追加 > URLで追加」によるICS購読は、
+Google側が不定期(実質12〜48時間以上)にしかファイルを再取得しないため、
+GitHub Actions側を毎時実行しても反映が遅れる・反映されないことがある。
+これを避けるため、本リポジトリはGoogle Calendar APIを使って直接
+カレンダーへ書き込む方式を採用している(`google_calendar_sync.py`)。
+
+### 初回セットアップ(1回だけ)
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成し、
+   「APIとサービス > ライブラリ」から **Google Calendar API** を有効化する。
+2. 「APIとサービス > OAuth同意画面」で、テスト用途として自分のGoogleアカウントを
+   テストユーザーに追加する(Publishingは不要)。
+3. 「APIとサービス > 認証情報」で **OAuthクライアントID** を作成する。
+   アプリケーションの種類は「デスクトップアプリ」を選択する。
+4. 作成したクライアントの「JSONをダウンロード」を押し、リポジトリ直下に
+   `client_secret.json` として保存する(**コミットしないこと**。`.gitignore`済み)。
+5. 以下を実行し、ブラウザでGoogleアカウントにログインしてアクセスを許可する。
+
+   ```bash
+   pip install -r requirements.txt
+   python get_google_refresh_token.py
+   ```
+
+6. 表示された `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REFRESH_TOKEN` を
+   GitHubリポジトリの Settings > Secrets and variables > Actions に、
+   同じ名前でそれぞれ登録する。
+
+以降は `lol_esports_to_ics.py` の実行時にこれらの環境変数が設定されていれば、
+ICS生成と同時に「LoL Esports Schedule」という名前のGoogleカレンダー
+(初回実行時に自動作成される)へ直接イベントが同期される。
+環境変数が未設定の場合は、従来通りICSファイルの生成のみが行われる。
+(`all_leagues_schedule.ics` が対象。`ltk_schedule.ics` は上記の通りURL購読のまま)

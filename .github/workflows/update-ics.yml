@@ -21,9 +21,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Generate ICS
+      - name: Generate ICS and sync Google Calendar
         env:
           LOLESPORTS_API_KEY: ${{ secrets.LOLESPORTS_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
         run: python lol_esports_to_ics.py
 
       - name: Generate LTK ICS

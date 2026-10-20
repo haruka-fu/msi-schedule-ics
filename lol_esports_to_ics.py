@@ -160,8 +160,9 @@ def filter_events(events, team_codes=None, block_names=None, start_date=None):
     return filtered
 
 
-def build_vevents(events, league_name):
-    lines = []
+def build_event_dicts(events, league_name):
+    """ICS出力とGoogleカレンダー同期の両方で使う、正規化済みイベント情報を作る"""
+    result = []
 
     for ev in events:
         match = ev.get("match")
@@ -194,14 +195,31 @@ def build_vevents(events, league_name):
 
         uid = f"{match.get('id', uuid.uuid4())}@lolesports-ics"
 
+        result.append(
+            {
+                "uid": uid,
+                "summary": summary,
+                "description": description,
+                "start": start_dt,
+                "end": end_dt,
+            }
+        )
+
+    return result
+
+
+def build_vevents(events, league_name):
+    lines = []
+
+    for ev in build_event_dicts(events, league_name):
         lines += [
             "BEGIN:VEVENT",
-            f"UID:{uid}",
-            f"DTSTAMP:{start_dt.strftime('%Y%m%dT%H%M%SZ')}",
-            f"DTSTART:{start_dt.strftime('%Y%m%dT%H%M%SZ')}",
-            f"DTEND:{end_dt.strftime('%Y%m%dT%H%M%SZ')}",
-            f"SUMMARY:{summary}",
-            f"DESCRIPTION:{description}",
+            f"UID:{ev['uid']}",
+            f"DTSTAMP:{ev['start'].strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTSTART:{ev['start'].strftime('%Y%m%dT%H%M%SZ')}",
+            f"DTEND:{ev['end'].strftime('%Y%m%dT%H%M%SZ')}",
+            f"SUMMARY:{ev['summary']}",
+            f"DESCRIPTION:{ev['description']}",
             "END:VEVENT",
         ]
 
@@ -211,6 +229,7 @@ def build_vevents(events, league_name):
 def main():
     leagues = get_leagues()
 
+    all_event_dicts = []
     all_vevents = []
     for league_id, league_name, slug in leagues:
         print(f"League found: {league_name} (id={league_id})")
@@ -227,7 +246,19 @@ def main():
             )
             print(f"  -> 絞り込み条件 {league_filter} 適用後: {len(events)} 件")
 
-        all_vevents += build_vevents(events, league_name)
+        event_dicts = build_event_dicts(events, league_name)
+        all_event_dicts += event_dicts
+        for ev in event_dicts:
+            all_vevents += [
+                "BEGIN:VEVENT",
+                f"UID:{ev['uid']}",
+                f"DTSTAMP:{ev['start'].strftime('%Y%m%dT%H%M%SZ')}",
+                f"DTSTART:{ev['start'].strftime('%Y%m%dT%H%M%SZ')}",
+                f"DTEND:{ev['end'].strftime('%Y%m%dT%H%M%SZ')}",
+                f"SUMMARY:{ev['summary']}",
+                f"DESCRIPTION:{ev['description']}",
+                "END:VEVENT",
+            ]
 
     lines = [
         "BEGIN:VCALENDAR",
@@ -241,6 +272,13 @@ def main():
     with open(OUTPUT_FILE, "w", encoding="utf-8", newline="") as f:
         f.write("\r\n".join(lines))
     print(f"{OUTPUT_FILE} を生成しました")
+
+    if os.environ.get("GOOGLE_REFRESH_TOKEN"):
+        from google_calendar_sync import sync_events
+
+        sync_events(all_event_dicts)
+    else:
+        print("GOOGLE_REFRESH_TOKEN 未設定のため、Googleカレンダー同期はスキップしました")
 
 
 if __name__ == "__main__":
