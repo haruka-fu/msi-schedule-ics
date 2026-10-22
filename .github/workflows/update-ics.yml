@@ -2,7 +2,9 @@ name: Update LoL Esports ICS
 
 on:
   schedule:
-    - cron: "0 * * * *"
+    # Google Calendar直接同期がAPIのレート制限(rateLimitExceeded)に
+    # 引っかかるため、毎時実行から4時間おきに変更。
+    - cron: "0 */4 * * *"
   workflow_dispatch: {}
 
 permissions:
