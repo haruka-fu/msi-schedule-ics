@@ -18,6 +18,7 @@ Google Calendar APIで直接カレンダーに反映するモジュール。
 """
 
 import os
+import time
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -26,6 +27,10 @@ from googleapiclient.errors import HttpError
 CALENDAR_SUMMARY = "LoL Esports Schedule"
 SOURCE_TAG = "lolesports-ics"
 TOKEN_URI = "https://oauth2.googleapis.com/token"
+
+# insert/update/delete の書き込み系呼び出しを連続で投げるとGoogle Calendar APIの
+# バースト制限(rateLimitExceeded)に引っかかるため、1件ごとに間隔を空ける。
+WRITE_INTERVAL_SECONDS = 0.3
 
 
 def _build_service():
@@ -125,6 +130,7 @@ def sync_events(event_dicts):
                     updated += 1
                 else:
                     raise
+            time.sleep(WRITE_INTERVAL_SECONDS)
         else:
             if (
                 current.get("summary") == body["summary"]
@@ -140,11 +146,13 @@ def sync_events(event_dicts):
                     calendarId=calendar_id, eventId=event_id, body=body
                 ).execute()
                 updated += 1
+                time.sleep(WRITE_INTERVAL_SECONDS)
 
     deleted = 0
     for stale_id in set(existing) - desired_ids:
         service.events().delete(calendarId=calendar_id, eventId=stale_id).execute()
         deleted += 1
+        time.sleep(WRITE_INTERVAL_SECONDS)
 
     print(
         f"Googleカレンダー同期完了: 新規{created}件 / 更新{updated}件 / "
